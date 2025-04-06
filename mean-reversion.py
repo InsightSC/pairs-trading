@@ -4,104 +4,111 @@ import numpy as np
 import matplotlib.pyplot as plt
 import statsmodels.tsa.stattools as ts
 
-def get_stationarity(df):
-    """
-    Performs ADF test of stationarity.
-    INPUTS: dataframe spread of pair of stocks
-    """
-    adf_results = {}
-
-    for column in df:
-        if column != 'Date':
-            adf_results[column] = ts.adfuller(df[column])[1]
+class MeanReversion():
+    def __init__(self, df):
+        self.df = df
+    def get_stationarity(self):
+        """
+        Performs ADF test of stationarity.
+        
+        Arguments: 
+            df: Dataframe spread of pair of stocks
+        """
+        df = self.df
+        adf_results = {}
     
-    return adf_results
-
-def get_pnl(exposure, spread, positions):
-    """
-    Returns matrix of cumulative sum of pnl% of the executed trades for each pair of stocks
-    INPUTS: total exposures; spread of the stocks; the [1,0,-1] position matrix
-    """
-    returns = spread.drop('Date', axis=1) - spread.drop('Date', axis=1).shift(1)
-    strategy_returns = (positions.drop('Date', axis=1).shift(1)*returns/exposure.drop('Date', axis=1)).cumsum()
-    strategy_returns.insert(0, 'Date', spread['Date'])
-
-    return strategy_returns.dropna()
-
-def get_entry_exit_points(df, threshold):
-    """
-    Returns [1,0,-1] positions matrix based on entry/exit signals
-    Trading signal: entry when z score crosses threshold and exit the position when it reaches the mean (i.e. 0)
-    INPUTS: z score dataframe; threshold value (likely between 1 and 2)
-    """
-    long_positions = pd.DataFrame(df['Date'])
-    short_positions = pd.DataFrame(df['Date'])
-    positions = pd.DataFrame(df['Date'])
-
-    for column in df:
-        if column != 'Date':
-            long_positions[column] = np.where(df[column] < -threshold, 1, 0) # entry when long
-            long_positions[column] = np.where(df[column] >= 0, 0, long_positions[column]) # exit when long
-
-            short_positions[column] = np.where(df[column] > threshold, -1, 0) # entry when short
-            short_positions[column] = np.where(df[column] <= 0, 0, short_positions[column]) # exit when short
-
-            positions[column] = long_positions[column] + short_positions[column]
-
-    return positions
-
-def get_z_score(df_spread):
-    """
-    Returns mean reversion values, defined as std dev amount of dispersion of the spread from the mean.
-    INPUTS: dataframe containing spreads of pairs of stocks.
-    """
-    df_z_score = pd.DataFrame(df_spread['Date'])
+        for column in df:
+            if column != 'Date':
+                adf_results[column] = ts.adfuller(df[column])[1]
+        
+        return adf_results
     
-    for column in df_spread:
-        if column != 'Date':
-            df_z_score[column] = (df_spread[column] - df_spread[column].rolling(window=30).mean())/(df_spread[column].rolling(window=30).std())
+    def get_pnl(exposure, spread, positions):
+        """
+        Returns matrix of cumulative sum of pnl% of the executed trades for each pair of stocks
+        INPUTS: total exposures; spread of the stocks; the [1,0,-1] position matrix
+        """
+        returns = spread.drop('Date', axis=1) - spread.drop('Date', axis=1).shift(1)
+        strategy_returns = (positions.drop('Date', axis=1).shift(1)*returns/exposure.drop('Date', axis=1)).cumsum()
+        strategy_returns.insert(0, 'Date', spread['Date'])
     
-    return df_z_score.dropna()
+        return strategy_returns.dropna()
+    
+    def get_entry_exit_points(df, threshold):
+        """
+        Returns [1,0,-1] positions matrix based on entry/exit signals
+        Trading signal: entry when z score crosses threshold and exit the position when it reaches the mean (i.e. 0)
+        INPUTS: z score dataframe; threshold value (likely between 1 and 2)
+        """
+        long_positions = pd.DataFrame(df['Date'])
+        short_positions = pd.DataFrame(df['Date'])
+        positions = pd.DataFrame(df['Date'])
+    
+        for column in df:
+            if column != 'Date':
+                long_positions[column] = np.where(df[column] < -threshold, 1, 0) # entry when long
+                long_positions[column] = np.where(df[column] >= 0, 0, long_positions[column]) # exit when long
+    
+                short_positions[column] = np.where(df[column] > threshold, -1, 0) # entry when short
+                short_positions[column] = np.where(df[column] <= 0, 0, short_positions[column]) # exit when short
+    
+                positions[column] = long_positions[column] + short_positions[column]
+    
+        return positions
+    
+    def get_z_score(self):
+        """
+        Returns mean reversion values, defined as std dev amount of dispersion of the spread from the mean.
+        INPUTS: dataframe containing spreads of pairs of stocks.
+        """
+        df_z_score = pd.DataFrame(df_spread['Date'])
+        
+        for column in df_spread:
+            if column != 'Date':
+                df_z_score[column] = (df_spread[column] - df_spread[column].rolling(window=30).mean())/(df_spread[column].rolling(window=30).std())
+        
+        return df_z_score.dropna()
+    
+    def get_total_exposure(df, stocks):
+        """
+        Returns dataframe containing sum of pairs of stocks -> to be used in pnl% calculation.
+        INPUTS: merged dataframe, name of stocks in form of list
+        """
+        df_sum = pd.DataFrame(df['Date']) 
+    
+        for stock1 in stocks:
+            for stock2 in stocks:
+                if stock1 != stock2 and stock2 + ' - ' + stock1 not in df_sum.columns:
+                    df_sum[stock1 + ' - ' + stock2] = df['Stock ' + stock1] + df['Stock ' + stock2]
+    
+        return df_sum
+    
+    def get_df_spread(df, stocks):
+        """
+        Returns dataframe containing spread of pairs of stocks, to be used in calculation of mean reversion values & pnl.
+        INPUTS: merged dataframe; name of stocks in form of list
+        """
+        df_spread = pd.DataFrame(df['Date']) 
+    
+        for stock1 in stocks:
+            for stock2 in stocks:
+                if stock1 != stock2 and stock2 + ' - ' + stock1 not in df_spread.columns:
+                    df_spread[stock1 + ' - ' + stock2] = df['Stock ' + stock1] - df['Stock ' + stock2]
+    
+        return df_spread
+    
+    def get_df_merged(data_frames):
+        """
+        Returns merged dataframe of the 8 stocks, drops NaN values for stock H by filling forward.
+        INPUTS: the read csv dataframes in form of list
+        """
+        df_merged = reduce(lambda left,right: pd.merge(left,right,on=['Date'], how='left'), data_frames)
+        df_merged = df_merged.dropna(how='all').fillna(method='ffill')
+    
+        return df_merged
 
-def get_total_exposure(df, stocks):
-    """
-    Returns dataframe containing sum of pairs of stocks -> to be used in pnl% calculation.
-    INPUTS: merged dataframe, name of stocks in form of list
-    """
-    df_sum = pd.DataFrame(df['Date']) 
-
-    for stock1 in stocks:
-        for stock2 in stocks:
-            if stock1 != stock2 and stock2 + ' - ' + stock1 not in df_sum.columns:
-                df_sum[stock1 + ' - ' + stock2] = df['Stock ' + stock1] + df['Stock ' + stock2]
-
-    return df_sum
-
-def get_df_spread(df, stocks):
-    """
-    Returns dataframe containing spread of pairs of stocks, to be used in calculation of mean reversion values & pnl.
-    INPUTS: merged dataframe; name of stocks in form of list
-    """
-    df_spread = pd.DataFrame(df['Date']) 
-
-    for stock1 in stocks:
-        for stock2 in stocks:
-            if stock1 != stock2 and stock2 + ' - ' + stock1 not in df_spread.columns:
-                df_spread[stock1 + ' - ' + stock2] = df['Stock ' + stock1] - df['Stock ' + stock2]
-
-    return df_spread
-
-def get_df_merged(data_frames):
-    """
-    Returns merged dataframe of the 8 stocks, drops NaN values for stock H by filling forward.
-    INPUTS: the read csv dataframes in form of list
-    """
-    df_merged = reduce(lambda left,right: pd.merge(left,right,on=['Date'], how='left'), data_frames)
-    df_merged = df_merged.dropna(how='all').fillna(method='ffill')
-
-    return df_merged
-
-def main():
+if __name__ == '__main__':
+    # Read stock price data .csv files
     df1 = pd.read_csv('Stock A.csv')
     df2 = pd.read_csv('Stock B.csv')
     df3 = pd.read_csv('Stock C.csv')
@@ -110,6 +117,7 @@ def main():
     df6 = pd.read_csv('Stock F.csv')
     df7 = pd.read_csv('Stock G.csv')
     df8 = pd.read_csv('Stock H.csv')
+    
     data_frames = [df1, df2, df3, df4, df5, df6, df7, df8]
     stocks = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 
@@ -204,6 +212,3 @@ def main():
 
     plt.legend()
     plt.show()
-
-if __name__ == "__main__":
-    main()
